@@ -1,0 +1,143 @@
+# Full test suite on every push to main:
+#   test        -- compile contracts, TXE suites, JS unit suites, desktop build
+#   integration -- live suites against a real local Aztec network
+#
+# Toolchain setup (install, PATH, and the ~/aztec-env.sh shim the repo's
+# scripts source) lives in .github/actions/setup-aztec, so the three jobs that
+# need it cannot drift apart.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AZTEC_VERSION: 5.0.1
+
+jobs:
+  test:
+    name: Contracts + unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Install Aztec toolchain
+        uses: ./.github/actions/setup-aztec
+        with:
+          version: ${{ env.AZTEC_VERSION }}
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --network-timeout 300000
+
+      - name: Compile contracts
+        run: yarn compile
+
+      - name: Generate bindings
+        run: yarn codegen
+
+      - name: TXE test suites
+        run: yarn test:nr
+
+      - name: JS unit suites
+        run: yarn test:js
+
+      - name: Desktop build check
+        run: yarn workspace @market/desktop build
+
+  integration:
+    name: Live integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      # The local network + proving stack is memory-hungry; give the runner
+      # swap headroom so the OOM killer stays out of the results.
+      #
+      # GitHub runners already have an ACTIVE /swapfile, so allocating over it
+      # fails ("text file busy") and took the whole job down with it. Swap it
+      # off and replace it. This is an optimisation, not a requirement, so the
+      # step reports what it managed and never fails the run: losing headroom
+      # should not look like a broken test suite.
+      - name: Add swap
+        continue-on-error: true
+        run: |
+          sudo swapoff -a || true
+          sudo rm -f /swapfile
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
+      - name: Install Aztec toolchain
+        uses: ./.github/actions/setup-aztec
+        with:
+          version: ${{ env.AZTEC_VERSION }}
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --network-timeout 300000
+
+      - name: Compile contracts + bindings
+        run: |
+          yarn compile
+          yarn codegen
+
+      - name: Start local Aztec network
+        run: |
+          nohup aztec start --local-network > /tmp/aztec-network.log 2>&1 &
+          echo "waiting for the node on :8080..."
+          for i in $(seq 1 120); do
+            if curl -s -m 2 -X POST -H 'content-type: application/json' \
+                 -d '{"jsonrpc":"2.0","method":"node_getBlockNumber","params":[],"id":1}' \
+                 http://localhost:8080 | grep -q result; then
+              echo "node is up"; exit 0
+            fi
+            sleep 5
+          done
+          echo "node never came up"; tail -50 /tmp/aztec-network.log; exit 1
+
+      # arweave-listings.test.ts uploads to a REAL Arweave gateway rather than a
+      # stub, which is the point of it: it proves the encrypted pointer survives
+      # a round trip through storage that never sees a key. arlocal is that
+      # gateway. Without it the suite fails on ECONNREFUSED :1984, which reads
+      # like a broken test rather than a missing service.
+      - name: Start arlocal (Arweave gateway)
+        run: |
+          nohup npx --yes arlocal@1.1.66 1984 > /tmp/arlocal.log 2>&1 &
+          echo "waiting for arlocal on :1984..."
+          for i in $(seq 1 30); do
+            if curl -s -m 2 -o /dev/null http://localhost:1984/info; then
+              echo "arlocal is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "arlocal never came up"; tail -50 /tmp/arlocal.log; exit 1
+
+      - name: Integration suites
+        run: yarn test:integration
+
+      - name: Service logs on failure
+        if: failure()
+        run: |
+          echo "=== aztec node ==="
+          tail -200 /tmp/aztec-network.log
+          echo "=== arlocal ==="
+          tail -50 /tmp/arlocal.log || true

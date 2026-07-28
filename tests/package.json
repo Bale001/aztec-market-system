@@ -1,0 +1,29 @@
+{
+  "name": "@market/integration-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "NODE_NO_WARNINGS=1 NODE_OPTIONS=--experimental-vm-modules jest --no-cache --runInBand --forceExit"
+  },
+  "dependencies": {
+    "@aztec/aztec.js": "5.0.1",
+    "@aztec/constants": "5.0.1",
+    "@aztec/foundation": "5.0.1",
+    "@aztec/noir-contracts.js": "5.0.1",
+    "@aztec/wallets": "5.0.1",
+    "@market/arweave-store": "0.1.0",
+    "@market/contract-bindings": "0.1.0",
+    "@market/deployment": "0.1.0",
+    "@market/identity": "0.1.0",
+    "@market/market-metadata": "0.1.0",
+    "@market/shared-types": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.11",
+    "@types/node": "^22.15.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.4.4"
+  }
+}

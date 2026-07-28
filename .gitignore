@@ -1,0 +1,11 @@
+node_modules/
+dist/
+target/
+store/
+codegenCache.json
+packages/contract-bindings/src/artifacts/
+*.log
+.env
+.DS_Store
+*.tsbuildinfo
+logs

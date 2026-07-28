@@ -1,0 +1,77 @@
+name: Set up the Aztec toolchain
+description: >
+  Installs the pinned Aztec CLI, puts it on PATH, and writes the ~/aztec-env.sh
+  shim the repo's scripts source. Verifies the install before returning.
+
+  REQUIRES NODE ON PATH ALREADY: the aztec CLI is a Node program whose launcher
+  execs `node`, so run actions/setup-node BEFORE this. The verification step at
+  the end will fail loudly if you do not.
+
+inputs:
+  version:
+    description: Aztec version to install (must match the workspace's packages).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        AZTEC_INSTALL_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        curl -sL https://install.aztec.network -o /tmp/aztec-install.sh
+        VERSION="$AZTEC_INSTALL_VERSION" NON_INTERACTIVE=1 bash /tmp/aztec-install.sh
+
+        # THE aztec BINARY IS NOT IN ~/.aztec/bin. That directory holds only the
+        # version-independent helpers (aztec-nargo, aztec-up, jq); `aztec`
+        # itself lives under the ACTIVE VERSION, reached through the `current`
+        # symlink that the installer points at ~/.aztec/versions/<version>.
+        # Putting only ~/.aztec/bin on PATH is what produced "aztec: command not
+        # found" while every other step looked correctly configured.
+        AZTEC_PATHS="$HOME/.aztec/current/bin:$HOME/.aztec/current/node_modules/.bin:$HOME/.aztec/bin"
+
+        # For subsequent workflow steps...
+        echo "$HOME/.aztec/current/bin" >> "$GITHUB_PATH"
+        echo "$HOME/.aztec/current/node_modules/.bin" >> "$GITHUB_PATH"
+        echo "$HOME/.aztec/bin" >> "$GITHUB_PATH"
+
+        # ...and for the repo's own scripts, which source this shim because the
+        # dev machines run a non-interactive shell that does not inherit PATH.
+        printf 'export PATH="%s:$PATH"\n' "$AZTEC_PATHS" > "$HOME/aztec-env.sh"
+
+        # `aztec start --local-network` shells out to a BARE `anvil` (it runs
+        # `anvil --version` then starts it), but the release ships that binary
+        # as `aztec-anvil`. Nothing else in the launcher needs a bare foundry
+        # tool, so one alias is enough.
+        #
+        # Aliasing the bundled binary rather than installing Foundry separately
+        # keeps anvil at exactly the version this Aztec release was built
+        # against, and downloads nothing. The link goes INSIDE the version
+        # directory, so it disappears when the version does.
+        BUNDLED_ANVIL="$HOME/.aztec/current/bin/aztec-anvil"
+        if [ -x "$BUNDLED_ANVIL" ]; then
+          ln -sf "$BUNDLED_ANVIL" "$HOME/.aztec/current/bin/anvil"
+        elif ! command -v anvil > /dev/null 2>&1; then
+          echo "neither a bundled aztec-anvil nor an anvil on PATH; --local-network will fail" >&2
+          exit 1
+        fi
+
+        # Fail HERE, with a clear message, rather than in whichever step first
+        # happens to call the toolchain.
+        export PATH="$AZTEC_PATHS:$PATH"
+        if ! command -v aztec > /dev/null; then
+          echo "aztec is not on PATH after install. Contents of ~/.aztec:" >&2
+          ls -la "$HOME/.aztec" >&2 || true
+          ls -la "$HOME/.aztec/current/bin" >&2 || true
+          exit 1
+        fi
+        installed="$(aztec --version)"
+        echo "aztec $installed"
+        if [ "$installed" != "$AZTEC_INSTALL_VERSION" ]; then
+          echo "expected aztec $AZTEC_INSTALL_VERSION, got $installed" >&2
+          exit 1
+        fi
+        # Checked here too, because a missing anvil does not surface until a job
+        # tries to start a local network, minutes later and in another step.
+        anvil --version | head -1

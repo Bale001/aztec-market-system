@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The Aztec Market System: How It Works</title>
+<style>
+  @page { size: A4; margin: 22mm 19mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 10.5pt; line-height: 1.55; color: #1a1a1a;
+    max-width: 172mm; margin: 0 auto;
+  }
+  h1 { font-size: 22pt; line-height: 1.2; margin-bottom: 0.2em; }
+  h2 { font-size: 15pt; margin-top: 1.8em; border-bottom: 2px solid #1a1a1a; padding-bottom: 0.15em; page-break-after: avoid; }
+  h3 { font-size: 12pt; margin-top: 1.4em; page-break-after: avoid; }
+  .subtitle { font-size: 12pt; color: #555; margin-top: 0; }
+  .meta { font-size: 9pt; color: #777; margin-bottom: 2em; }
+  p { margin: 0.6em 0; text-align: justify; }
+  code {
+    font-family: 'Consolas', 'DejaVu Sans Mono', monospace;
+    font-size: 8.6pt; background: #f2f2f0; padding: 0.05em 0.25em; border-radius: 2px;
+  }
+  pre {
+    font-family: 'Consolas', 'DejaVu Sans Mono', monospace;
+    font-size: 8.2pt; line-height: 1.45;
+    background: #f7f7f5; border: 1px solid #ddd; border-left: 3px solid #666;
+    padding: 0.8em 1em; overflow-x: hidden; white-space: pre-wrap;
+    page-break-inside: avoid; border-radius: 3px;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  .snippet-title {
+    font-family: 'Consolas', monospace; font-size: 8pt; color: #666;
+    margin-bottom: -0.4em; margin-top: 1em;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 9pt; margin: 1em 0; page-break-inside: avoid; }
+  th, td { border: 1px solid #bbb; padding: 0.45em 0.6em; text-align: left; vertical-align: top; }
+  th { background: #eceae6; }
+  .pub { color: #a33; font-weight: bold; }
+  .priv { color: #1a7a3a; font-weight: bold; }
+  .box {
+    border: 1px solid #c9c4b8; background: #faf8f2; padding: 0.7em 1em;
+    margin: 1em 0; border-radius: 3px; page-break-inside: avoid;
+  }
+  .box .box-title { font-weight: bold; font-variant: small-caps; letter-spacing: 0.05em; }
+  ul, ol { margin: 0.5em 0; padding-left: 1.6em; }
+  li { margin: 0.3em 0; }
+  .toc { columns: 2; font-size: 9.5pt; }
+  .toc div { margin: 0.25em 0; }
+  dt { font-weight: bold; margin-top: 0.7em; }
+  dd { margin-left: 1.2em; }
+  .footer-note { font-size: 8.5pt; color: #777; border-top: 1px solid #ccc; margin-top: 3em; padding-top: 0.8em; }
+</style>
+</head>
+<body>
+
+<h1>The Aztec Market System</h1>
+<p class="subtitle">How a marketplace works when almost everything about it is a secret</p>
+<p class="meta">Written for readers with no prior knowledge of Aztec or zero-knowledge cryptography.</p>
+
+<div class="box">
+<span class="box-title">What this document describes</span><br>
+A marketplace framework built on the Aztec network in which markets are invisible
+unless you hold their link, a vendor's real identity never appears anywhere, and a
+buyer can pay for an item while the blockchain itself verifies the payment was
+correct, <em>without the amount, the item, the buyer, or the seller ever becoming
+public</em>. This document explains each mechanism, and is candid about what each one
+does and does not hide.
+</div>
+
+<h2>Contents</h2>
+<div class="toc">
+<div>1. Aztec in five minutes</div>
+<div>2. The pieces of the system</div>
+<div>3. Two wallets, one seed</div>
+<div>4. Hidden markets: the market link</div>
+<div>5. What the chain actually stores</div>
+<div>6. Vendors without identities</div>
+<div>7. Listings: sealed content, verifiable prices</div>
+<div>8. The order of a category</div>
+<div>9. Fully private orders and escrow</div>
+<div>10. Settlement, refunds, and timeouts</div>
+<div>11. Disputes</div>
+<div>12. Paying for transactions anonymously</div>
+<div>13. Running a market</div>
+<div>14. What an observer actually sees</div>
+<div>15. Honest limitations</div>
+<div>16. Glossary</div>
+</div>
+
+<h2>1. Aztec in five minutes</h2>
+
+<p>Most blockchains are radically public. On Ethereum, every account balance, every
+payment, and every interaction with an application is visible to anyone, forever.
+<strong>Aztec</strong> is a network built on top of Ethereum that takes the opposite
+stance: by default what you do is your own business, and the chain verifies your
+actions without learning them.</p>
+
+<p>Four ideas are enough to follow everything that comes later.</p>
+
+<h3>Public state and private state</h3>
+
+<p>An Aztec contract keeps two kinds of data. <span class="pub">Public state</span>
+behaves like ordinary blockchain storage: a value at a slot, readable by anyone.
+<span class="priv">Private state</span> is stored as <strong>notes</strong>: encrypted
+records that live in your own device's database. The chain never sees a note's
+contents. It sees only a <em>commitment</em>, a hash that proves the note exists
+without revealing what is inside it.</p>
+
+<p>Spending a note means publishing a <strong>nullifier</strong>: a one-way tag derived
+from the note. The network keeps a list of every nullifier it has ever seen and rejects
+duplicates. That single rule prevents double-spending without anyone learning which note
+was spent, by whom, or for how much. A nullifier is an opaque number and cannot be
+traced back to its note.</p>
+
+<h3>Private functions run on your own machine</h3>
+
+<p>Here is the counterintuitive part. When you call a private function, it does not
+execute on the network. It executes locally, on your computer, and produces a
+<strong>zero-knowledge proof</strong> that it executed correctly. You send the proof, not
+the inputs. Validators check the proof and learn nothing else.</p>
+
+<p>This is what makes a private marketplace possible at all. The contract can insist that
+the amount you escrowed matches the listing's price, and be certain of it, while the
+price and the amount stay secret. The rule is enforced by mathematics rather than by
+someone being trusted to look.</p>
+
+<div class="box">
+<span class="box-title">The one-sentence version</span><br>
+On Aztec, &ldquo;the contract verified my payment&rdquo; does not mean a computer
+somewhere looked at your payment. It means <em>your own machine</em> ran the contract's
+rules over your secret data and produced a proof that the rules held, and the network
+only ever sees the proof.
+</div>
+
+<p>One consequence shapes much of the design: a private function cannot read public state
+at the moment it runs, because it runs before the transaction is ordered. Instead it
+reads a value from a recent block and proves the value was there, using the block header
+as an anchor. Wherever this document says a private function &ldquo;proves&rdquo;
+something about public storage, that is the mechanism.</p>
+
+<h3>Encrypted messages ride along</h3>
+
+<p>If a note belongs to you, you need to receive it. Aztec transactions carry encrypted
+logs addressed to a recipient's key. Your wallet scans them, decrypts what it can open,
+and stores the notes it finds. This is how a vendor learns they have an order, and how a
+buyer receives a receipt, with no server in the middle.</p>
+
+<h3>Fees</h3>
+
+<p>Every transaction costs fee juice, and fee juice has to come from an account, which
+is awkward when the entire point is that nobody should know who you are. Section 12
+explains how the system pays for transactions without tying them to an identity.</p>
+
+<h2>2. The pieces of the system</h2>
+
+<p>The system is a framework: anyone can deploy and operate their own independent market.
+The parts are one contract per market, a shared library, a global lookup table, and a
+desktop application.</p>
+
+<table>
+<tr><th>Piece</th><th>Role</th></tr>
+<tr><td><strong>Marketplace</strong> (contract)</td>
+<td>One instance per market. Holds the configuration, vendor records, listings, orders, feedback, and moderation state, plus vendor deposits. It never holds order funds.</td></tr>
+<tr><td><strong>OrderEscrow</strong> (contract)</td>
+<td>One instance per order, holding that order's funds. Nobody deploys it and its class is never published: it exists because both parties can derive its address. It pays out only against a terminal order state the Marketplace has already recorded.</td></tr>
+<tr><td><strong>MarketplaceRegistry</strong> (contract)</td>
+<td>One global lookup table shared by every market. Entries are keyed by an opaque fingerprint of a market's access secret, so it resolves a link you already hold rather than advertising anything.</td></tr>
+<tr><td><strong>market-protocol</strong> (library)</td>
+<td>Shared domain constants and Poseidon2 derivations, mirrored exactly in TypeScript and cross-checked with identical test vectors, so the app and the circuit can never disagree about a hash.</td></tr>
+<tr><td><strong>cUSDC</strong> (external contract)</td>
+<td>The currency. An already-deployed token on Aztec with private balances, held at a fixed address per network. Nothing in this system deploys it; markets simply point at it.</td></tr>
+<tr><td><strong>Desktop app</strong></td>
+<td>Everything a person does: browsing, buying, selling, moderating, messaging, and deploying a market.</td></tr>
+<tr><td><strong>Arweave</strong></td>
+<td>Permanent storage for encrypted listing documents. It stores ciphertext and never sees a key.</td></tr>
+</table>
+
+<p>The contracts are written in <strong>Noir</strong>, Aztec's language for
+zero-knowledge programs; everything else is TypeScript. There is no server, no indexer,
+and no API of our own. The app talks to an Aztec node and to Arweave, and derives
+everything else itself.</p>
+
+<h3>The currency</h3>
+
+<p>Trade is denominated in <strong>cUSDC</strong>, a dollar-denominated token that already
+exists on Aztec at a known address on each network and supports private balances. This
+system does not issue, deploy, or govern it. Users acquire cUSDC by bridging, and a market
+simply records its address as the asset orders are priced in.</p>
+
+<p>This matters for privacy in a way that is easy to miss. Because the currency is shared
+with everyone else using it on Aztec, market activity does not stand out as belonging to a
+particular marketplace's own coin. A bespoke token would be a label on every transaction
+that touched it.</p>
+
+<p>A market records the payment asset as an address, so it is technically free to point
+elsewhere, and the local development sandbox does exactly that: it deploys a mock cUSDC,
+because no real one exists there. In practice every real market uses the network's
+cUSDC, which is what the deployment wizard fills in.</p>
+
+<h2>3. Two wallets, one seed</h2>
+
+<p>Every user has a single recovery seed, and that seed produces two very different kinds
+of account. Understanding the split makes the rest of the system fall into place.</p>
+
+<p>The <strong>universal wallet</strong> is the account that touches the outside world. It
+holds your tokens, it holds the credit that pays transaction fees, and it is the account
+you bridge funds into from Ethereum. It is the closest thing here to a conventional
+wallet.</p>
+
+<p>A <strong>per-market account</strong> is derived from your seed combined with a
+specific market's link and an index. It is the identity that actually appears on-chain
+inside that market: the vendor who owns a listing, the moderator who approves one, the
+owner who deployed it. Because the market's link is folded into the derivation, the same
+person selling on two markets produces two unrelated accounts, and neither reveals
+anything about the universal wallet behind them.</p>
+
+<p>You obtain a per-market account by claiming a username. The contract stores only
+<code>hash(username, access secret)</code> alongside the address that claimed it, so the
+plaintext handle never reaches the chain. Anyone holding the market link can still verify
+that a listing's displayed handle genuinely belongs to its creator, by recomputing that
+hash and comparing. Owners and vendors may hold several identities in one market and
+switch between them in the app.</p>
+
+<div class="box">
+<span class="box-title">The important consequence</span><br>
+A per-market account is an <em>inbox and a name</em>. It never holds fee juice and never
+needs funding before it can act. Money that arrives for it can be swept to the universal
+wallet whenever its owner chooses. This is what stops a pseudonym from being linked to
+the wallet that pays for it (see section 12).
+</div>
+
+<h2>4. Hidden markets: the market link</h2>
+
+<p>There is no directory of markets. Every market is hidden, the way an onion service is
+hidden: reachable only by someone who was given its address. That address is the
+<strong>market link</strong>, and what it really carries is an <strong>access secret</strong>,
+a random 254-bit number generated at deployment and shared out of band, in a chat
+message, a QR code, or a whisper. The resemblance to an onion service is deliberate right
+down to the format: a link is that secret rendered as a 56-character address ending in
+<code>.aztec</code>, and it contains nothing else, not even the market's contract
+address.</p>
+
+<h3>Finding a market you already know about</h3>
+
+<p>Every market registers itself in one global registry contract. That sounds like it
+should defeat the whole purpose, and it would if the registry were keyed by anything
+meaningful. It is keyed by a one-way fingerprint of the access secret instead:</p>
+
+<p class="snippet-title">contracts/market-protocol/src/lib.nr</p>
+<pre><code>pub fn derive_market_lookup_key(access_secret: Field) -> Field {
+    poseidon2_hash([access_secret, DOMAIN_MARKET_LOOKUP])
+}</code></pre>
+
+<p>Holding the secret, you recompute the key and find the market's contract address
+immediately. Without it, you are looking at rows keyed by meaningless numbers. Scanning
+the registry tells an outsider how many markets exist and nothing whatever about any of
+them: not a name, not a category, not an owner.</p>
+
+<p>Registration is permissionless and first-come-first-served per key, and the registry
+cannot check that a key was derived honestly. It does not need to. Someone who squats a
+key they cannot decrypt has only pointed a link at a contract whose sealed content will
+not open, and the app refuses to render a market it cannot decrypt. Squatting produces a
+failure, never a convincing forgery.</p>
+
+<p>The access secret is the master key to everything readable about the market. From it
+the app derives:</p>
+
+<ul>
+<li>the registry lookup key, which turns the link into a contract address;</li>
+<li>the key that decrypts the storefront document (name, description, pages, categories, branding);</li>
+<li>the key that decrypts every listing document;</li>
+<li>the salt for category tags, so a category can be matched without its name being guessable;</li>
+<li>the blinding factors that let a reader check a listing's price against the commitment stored on-chain;</li>
+<li>nothing to do with money. It once derived the marketplace contract's own encryption keys; the contract is now deployed with none, and each order's escrow uses a secret minted for that order alone.</li>
+</ul>
+
+<p>Each derivation is tagged with a distinct domain constant, so the same secret can feed
+several purposes with no risk that one derived value collides with or substitutes for
+another.</p>
+
+<p>Someone without the link, looking directly at the contract, sees ciphertext, opaque
+hashes, and counters. They can tell that <em>a</em> market exists at that address and
+roughly how busy it is. They cannot tell what it sells, what anything costs, or even what
+it is called.</p>
+
+<p>The encryption is authenticated, which the app exploits deliberately: decrypting with
+the wrong key does not yield garbage, it fails outright. A mistyped link or substituted
+ciphertext ends in &ldquo;this market could not be opened&rdquo; rather than in
+attacker-controlled content. Decryption <em>is</em> the authentication.</p>
+
+<p>Sharing the link shares read access. There is no way to un-share it, and no way to read
+the market without it.</p>
+
+<h2>5. What the chain actually stores</h2>
+
+<p>It is worth being concrete about the split, because it determines exactly what leaks.</p>
+
+<table>
+<tr><th>Public, on-chain</th><th>Private</th></tr>
+<tr><td>Sealed storefront document (ciphertext)</td><td>Order contents, buyer identity, delivery details</td></tr>
+<tr><td>Listing records: encrypted pointer, price commitment, category tag, status, creator, position</td><td>Listing document text, images, and every price in its table</td></tr>
+<tr><td>Vendor records: address, status, deposit amount, active order count</td><td>Which listings a buyer viewed or bought</td></tr>
+<tr><td>Market configuration: fee rate, deposit and collateral amounts, timeout, policies</td><td>Escrow balances, held as private notes at a separate address per order</td></tr>
+<tr><td>Counters, nullifiers, and anonymous per-order flags</td><td>Feedback text and ratings, stored as sealed blobs</td></tr>
+</table>
+
+<p>Notice what is public. The market's <em>rules</em> are public: the fee percentage, the
+deposit required of vendors, how long an order may sit before it settles. That is
+deliberate: those are the terms everyone is agreeing to, and they ought to be checkable.
+What stays private is every particular: who, what, and how much.</p>
+
+<p>Per-subject collections (a category's listings, a vendor's listings, a listing's
+feedback) all live in a single generic map keyed by a domain-separated tag. Adding a new
+kind of collection means choosing a new tag rather than adding new storage, which keeps
+the contract's storage layout small enough for the compiler to handle.</p>
+
+<h2>6. Vendors without identities</h2>
+
+<p>A vendor's on-chain identity is simply their per-market account address. There is no
+registration document, no real name, and no link to anything outside the market.</p>
+
+<p>Becoming a vendor takes two steps: claim a username, then register as a vendor from
+that same account. What happens next depends on the market's <strong>vendor
+policy</strong>, fixed by the owner at deployment:</p>
+
+<table>
+<tr><th>Policy</th><th>Effect</th></tr>
+<tr><td>Open</td><td>Anyone who registers becomes active immediately.</td></tr>
+<tr><td>Approval</td><td>Registration stays pending until the owner or a moderator approves it.</td></tr>
+<tr><td>Deposit</td><td>Registration requires locking a deposit in cUSDC.</td></tr>
+<tr><td>Both</td><td>Deposit and approval.</td></tr>
+</table>
+
+<p>A deposit is a stake against bad behaviour. It is paid <em>directly from the universal
+wallet</em> in the same transaction that registers the vendor, so the pseudonymous account
+never has to hold the funds and no transfer between the two ever appears. Recovering the
+deposit is deliberately slow: the vendor requests withdrawal, a delay elapses, and the
+deposit is returned only if they have no active orders. A vendor cannot take an order,
+take the money, and walk off with their stake the same afternoon.</p>
+
+<p>Suspending a vendor hides their listings without touching their deposit or their
+outstanding orders, so moderation cannot be turned into a way to steal.</p>
+
+<h2>7. Listings: sealed content, verifiable prices</h2>
+
+<p>A listing has two halves: content that is encrypted and stored off-chain, and a small
+public record that commits to it.</p>
+
+<p>The content (title, description, images, options, the vendor's handle) is validated,
+sealed under the access secret, and uploaded to Arweave, which returns a storage id. That
+id is itself a hash of the content, so it doubles as an integrity check: if the bytes
+change, the id no longer matches. The id is then encrypted under the access secret, and
+<em>that</em> is what goes on-chain, as a 61-byte pointer packed into two field elements.</p>
+
+<p>So the chain holds an encrypted pointer to encrypted content. Without the market link
+you cannot even work out which Arweave object belongs to which listing.</p>
+
+<h3>Prices you can check but not see</h3>
+
+<p>The price is the interesting part. It must stay hidden, yet a buyer must not be able to
+pay less than it, and a vendor must not be able to change it after the fact.</p>
+
+<p>The answer is a commitment. There is rarely just one price, though: a listing offers
+variants (sizes, colours) and shipping methods, each priced separately. So the commitment
+covers the whole <strong>price table</strong> at once: every variant price, then every
+shipping price, under a blinding factor derived from the access secret and the listing's
+id.</p>
+
+<pre><code>blinding   = poseidon2([access_secret, listing_id, DOMAIN_PRICE_BLINDING])
+commitment = poseidon2([blinding, DOMAIN_PRICE_COMMITMENT,
+                        variantCount, shippingCount,
+                        variantPrices[0..7], shippingPrices[0..3]])</code></pre>
+
+<p>To an outsider the commitment is an unguessable hash. The blinding factor carries about
+254 bits of entropy, so guessing plausible prices and checking them gets nowhere. To a
+link holder it is verifiable: recompute it from the decrypted document and confirm it
+matches. A listing whose displayed prices disagree with its on-chain commitment is refused
+by the app rather than shown.</p>
+
+<p>And to a buyer it is something better still: a value they can <em>open inside a
+proof</em>. When an order is placed the buyer hands the circuit the whole table and says
+which row of each list they chose. The circuit rebuilds the commitment, checks it matches
+the chain, and then <em>computes the order total itself</em>:</p>
+
+<pre><code>amount = variantPrice[chosen] × quantity + shippingPrice[chosen]</code></pre>
+
+<p>Which is the point: the total is never something the buyer asserts and the contract
+believes. It is derived from prices the vendor committed to publicly, inside a proof, while
+the prices, the choice and the total all stay secret. Shipping is charged once per order;
+only the item scales with quantity.</p>
+
+<div class="box">
+<span class="box-title">A subtlety worth stating</span><br>
+The table is a fixed size (up to eight variants and four shipping methods), and unused
+rows are committed as <em>zeros</em>. That keeps the commitment a fixed shape and binds the
+row counts, so a vendor cannot quietly reveal an extra row later. But it also means an
+out-of-range choice would select a row priced at nothing. The circuit therefore rejects any
+index at or past the real count, and those two checks are the only thing standing between a
+listing and being bought for free.
+</div>
+
+<h3>Categories</h3>
+
+<p>A listing belongs to exactly one category, stored as a salted hash of the category name
+rather than the name itself. Link holders filter by category by computing the same tag;
+outsiders see an opaque number they cannot reverse, because the salt is the access
+secret.</p>
+
+<h3>Status and approval</h3>
+
+<p>Every listing carries a status: active, paused, removed, or pending approval. Markets
+configured to moderate listings hold new and edited listings as pending until a moderator
+approves them, and editing an approved listing returns it to pending, so content cannot
+be swapped in after review. Buyers only ever see active listings, and only active listings
+can be ordered.</p>
+
+<h2>8. The order of a category</h2>
+
+<p>The sequence in which listings appear inside a category is stored explicitly, as a
+linked list: the category records which listing comes first, and each listing records
+which one follows it.</p>
+
+<p>New listings join the end. The owner, or a moderator holding the listings permission,
+can move any listing elsewhere: promoting it to the top of its category, or nudging it up
+and down a place at a time.</p>
+
+<p>A move costs the same no matter how large the category has grown. The app walks the
+chain locally to find the listing's current neighbour and its intended one, and passes
+both to the contract, which verifies them before relinking. Searching the list inside the
+transaction would cost an unbounded number of storage reads; naming the neighbours and
+checking the claim costs a fixed few. A caller who lies about a neighbour has their
+transaction rejected rather than corrupting the order.</p>
+
+<p>Because order is stored separately from identity, rearranging a listing changes nothing
+else about it: not its id, not its price commitment, not the content bound to it. Paused
+and removed listings keep their place in the sequence while staying invisible to buyers.</p>
+
+<h2>9. Fully private orders and escrow</h2>
+
+<p>This is the centrepiece, and the brief is demanding: the buyer pays into escrow, the
+contract verifies the amount matches the hidden price, the vendor receives the order and
+proof of payment, and an outside observer sees nothing attributable at all.</p>
+
+<p>Placing an order is a single private transaction. Inside it, and never leaving the
+buyer's machine, all of the following happen at once:</p>
+
+<ol>
+<li>The listing's status and price commitment are proven against a recent block, so the item is genuinely active at the price claimed.</li>
+<li>The listing's whole price table is opened against the commitment, and the total is computed from the rows the buyer chose, so the amount is derived rather than asserted.</li>
+<li>Funds move from the buyer's private balance into that order's own escrow address: the item's price plus a small refundable collateral.</li>
+<li>An order note is delivered to the vendor's inbox and a receipt note to the buyer, carrying which variant and shipping method were chosen.</li>
+<li>A delivery memo, encrypted so that only the vendor can read it, is attached.</li>
+</ol>
+
+<p>Two details deserve spelling out.</p>
+
+<p><strong>Where the money sits.</strong> Not in the marketplace. Each order's funds go to
+an address belonging to that order alone, holding encrypted notes exactly as a user would,
+its public balance never changing. The amount exists only inside sealed envelopes.</p>
+
+<p>There is no pool, and that is the point. An earlier design did pool the funds in the
+marketplace contract under note keys derived from the market link. That worked, but it
+meant anyone holding the link could read the pool: every amount, every deposit, every
+payout. The key that let a buyer prove their settlement was the same key that revealed
+everyone else's orders. A shared pool cannot be private per order.</p>
+
+<p>So each order gets its own escrow, with keys derived from a secret minted for that one
+order and shared with nobody but its two parties. A leaked secret exposes exactly one
+order. Sharing it with the vendor is deliberate: it is how they settle. And it cannot be
+used to steal, for a subtle reason. Holding a
+note's keys lets you build a proof <em>about</em> the note, but the token only moves when
+the escrow's own code is the caller, which happens exclusively inside the rules below.</p>
+
+<p><strong>Nobody deploys these escrows.</strong> Not the buyer, not the vendor, not the
+market owner, and no setup step deploys a template either. Both parties simply compute the
+address, and the network accepts calls to it, because an Aztec address is itself a
+commitment to the code that runs there and the terms it was opened with. This costs nothing
+and publishes nothing: an observer cannot even tell the address exists.</p>
+
+<p><strong>That commitment is also what proves the buyer paid.</strong> If buyers fund their
+own escrows, what stops one of them recording an order and funding nothing? The marketplace
+cannot tell by looking. An address is a hash of the code, the keys and the terms, and a
+proof has no way to compute one. So the marketplace does not check the escrow. It
+<em>opens</em> it. Placing an order works the price out from the listing's sealed price
+list, builds the escrow's terms from that price and the market's own settings, opens an
+escrow on exactly those terms at the address the buyer named, and only then moves the money
+in. The network permits that opening only if the address really is the one those terms
+produce. An escrow opened for a cheaper order, a friendlier vendor, a smaller deposit or a
+different market is a different address, and the order cannot be placed at all. So a vendor
+never has to check whether an order was paid for: an order that exists was paid for, in the
+same transaction that created it.</p>
+
+<p>The catch is that a contract nobody deployed can have no public part, and a private-only
+contract cannot be ordered against a competing transaction. So the escrow never decides
+anything. The marketplace, which <em>can</em> settle a race in public, resolves every
+contested question and records the answer; the escrow reads that answer and pays. Which is
+why finishing an order takes two transactions: the marketplace first, then the money.</p>
+
+<p><strong>Who the buyer is.</strong> The buyer pays directly from their universal wallet,
+and the order note carries no buyer address at all. The vendor learns what was ordered and
+where to ship it, and nothing else. Neither the vendor nor the market operator can
+determine who bought what.</p>
+
+<p>The order's identifier is derived from the market, the listing, and a random per-order
+number that the buyer keeps. It is opaque, it reveals nothing, and it is what both parties
+use to refer to the order afterwards.</p>
+
+<p>The collateral is what makes feedback meaningful. It is the buyer's own money, returned
+when they confirm receipt and leave a rating, so a rating costs nothing to give and
+something to withhold.</p>
+
+<h2>10. Settlement, refunds, and timeouts</h2>
+
+<p>An order can end in exactly four ways.</p>
+
+<table>
+<tr><th>Ending</th><th>Who acts</th><th>Result</th></tr>
+<tr><td>Cancelled</td><td>Buyer, before the vendor accepts</td><td>The full escrow returns to the buyer.</td></tr>
+<tr><td>Completed</td><td>Buyer, after receiving the goods</td><td>The vendor is paid, the market fee is split off, the collateral returns to the buyer, and their rating is recorded.</td></tr>
+<tr><td>Refunded</td><td>Vendor, at any point</td><td>The full escrow, collateral included, is made available for the buyer to claim.</td></tr>
+<tr><td>Timed out</td><td>Vendor, after the timeout</td><td>An accepted order the buyer never confirmed settles to the vendor.</td></tr>
+</table>
+
+<p>Each of these is two transactions rather than one, and the reason is the interesting
+part. Every ending above is a race with some other ending: a buyer cancelling races the
+vendor accepting, and a vendor claiming a timeout races the buyer disputing. Deciding a
+race means being ordered against the other transaction, which only a public call can be,
+and the escrow, having no public part, cannot do it. So the marketplace decides. It runs
+the check in public, where the network puts transactions in a definite order, and records
+the verdict; if the vendor's acceptance landed first, the cancellation simply fails and the
+money stays put. Only then does the escrow act, and by that point there is nothing left to
+race: it reads a verdict that can never change and pays accordingly.</p>
+
+<p>The practical consequence is that the money can lag the decision by a block, and if the
+second transaction is never sent the funds simply wait: the verdict is permanent, so the
+payout can always be claimed later.</p>
+
+<p>Between placing and ending, the vendor accepts the order and can post shipping updates.
+Acceptance and fulfilment are recorded as anonymous public flags against the opaque order
+id, which is enough for both sides to follow progress, revealing nothing about either of them.</p>
+
+<p><strong>One ending, exactly once.</strong> Every settlement path publishes the same
+nullifier, derived from the order id. Because the network rejects duplicate nullifiers, an
+order reaches one terminal state one time. Double refunds, pay-then-refund races, and
+replayed confirmations are impossible by construction rather than by careful
+bookkeeping.</p>
+
+<p><strong>Cancel only before acceptance.</strong> That ordering needs a fact both sides
+agree on, and note-based state cannot provide one: you cannot prove a note does
+<em>not</em> exist yet. So acceptance writes a single public flag against the order id, and
+cancellation enqueues a public check that the flag is still unset. If the vendor's
+acceptance lands first, the cancellation reverts and the escrow is never authorised to pay
+out, so the money stays where it is. The race is settled by block ordering, and the leak is
+one anonymous bit.</p>
+
+<p><strong>Time without a clock.</strong> Private execution has no notion of
+&ldquo;now&rdquo;, since a proof can be generated at any moment. Block headers carry timestamps
+and only move forward, so a timeout claim proves against a recent header that the deadline
+had already passed: if a past block was late, now is later.</p>
+
+<p><strong>Where the money goes.</strong> When an order settles in the vendor's favour, the
+payment goes to the vendor's per-market account and the market's fee to the owner's. This
+is intentional. The vendor's pseudonym is what appears on the listing, so paying anywhere
+else would tie that pseudonym to another account. Both parties sweep their proceeds to
+their universal wallet whenever they like.</p>
+
+<p><strong>Refunds are claimed, not pushed.</strong> Because the contract does not know the
+buyer's address, it cannot send money to them. Instead it marks the escrow as theirs to
+take, and the buyer collects it in their own transaction. The alternative would have meant
+storing the buyer's address, precisely what the design exists to avoid.</p>
+
+<h2>11. Disputes</h2>
+
+<p>Arbitration happens in conversation, not in the contract. Buyer, vendor, and a moderator
+talk in the app's private messaging, built on the <strong>SimpleX</strong> protocol, whose
+privacy model mirrors the system's own: no user identifiers of any kind, relay queues that
+keep no records, and end-to-end encryption.</p>
+
+<p>The chain's role is deliberately small. Marking an order disputed sets an anonymous
+public flag against the order id, and while it is set the vendor's timeout settlement will
+not go through. That single fact is what gives the conversation teeth: a disputed order can
+only end by the buyer confirming or the vendor refunding, so neither side can wait the
+other out.</p>
+
+<p>The hard problem is proving to a moderator that you are the actual buyer, when nothing
+on-chain records who that is. The answer is a commitment published when the dispute opens.
+The buyer commits to a secret; later they reveal that secret in the dispute conversation;
+the moderator recomputes one hash and compares. The moderator learns that they are speaking
+to the genuine buyer, and nothing more: no address, no identity.</p>
+
+<p>A moderator holding the disputes permission rules for one side or the other. The ruling
+is a flag, and the moderator never touches the money: it unlocks a payout that the winning
+party then collects from the order's own escrow, themselves. An arbiter who can decide but
+cannot pay themselves is a far smaller thing to trust.</p>
+
+<p>Vendors and moderators publish a contact address so they can be reached: a SimpleX
+link, sealed under the access secret and written to the contract by the account it belongs
+to. Because only that account can write it, a successfully opened address is provably that
+pseudonym's: the on-chain write is the attestation.</p>
+
+<p>Messaging identity follows account identity exactly. Each per-market account gets its
+own messaging profile, with its own conversations, contacts and display name. Two accounts
+on one market are two personas, which is the entire reason for having more than one, so
+they share nothing, and switching accounts switches inbox. The one deliberate exception is
+the market's dispute desk: its address is published on-chain and belongs to the market
+rather than to a person, so it stays put when the owner switches accounts, and every open
+dispute stays reachable.</p>
+
+<h2>12. Paying for transactions anonymously</h2>
+
+<p>Transactions cost fees, and a fee is paid by an account. Naively, a vendor accepting an
+order would pay from the vendor's account, which means funding that account, which means a
+transfer from somewhere, which is exactly the link the whole design is trying to avoid.</p>
+
+<p>The system resolves this in two parts.</p>
+
+<p>First, fees are paid through a <strong>fee-paying contract</strong> that accepts payment
+from a private balance. You bridge fee juice once into credit held inside that contract,
+and spend it privately thereafter. The contract is a shared, standard one rather than a
+bespoke deployment, so the anonymity set spans every application that uses it, not merely
+this marketplace.</p>
+
+<p>Second, the universal wallet <strong>acts on behalf of</strong> the per-market account.
+Every market function takes the acting identity as an explicit argument and verifies it
+cryptographically. The universal wallet sends the transaction and pays the fee; the
+per-market account signs a one-time authorisation naming that exact call. On-chain the
+action is unambiguously the pseudonym's, while the gas came from an account nobody can
+connect to it.</p>
+
+<p>The practical result is that pseudonymous accounts never need funding. A vendor can
+register, list, accept orders, and be paid without their pseudonym ever holding a fee.</p>
+
+<h2>13. Running a market</h2>
+
+<p>Deploying a market is done from the app. The owner chooses the presentation (name,
+description, pages, categories, branding) and the rules:</p>
+
+<table>
+<tr><th>Setting</th><th>Meaning</th></tr>
+<tr><td>Payment asset</td><td>The token orders are denominated in. Defaults to the network's cUSDC.</td></tr>
+<tr><td>Fee</td><td>The market's cut of each completed order, in basis points.</td></tr>
+<tr><td>Vendor policy</td><td>Open, approval, deposit, or both.</td></tr>
+<tr><td>Vendor deposit</td><td>The stake required, where the policy demands one.</td></tr>
+<tr><td>Order timeout</td><td>How long before an accepted order may be settled by the vendor. Also the delay on deposit withdrawal.</td></tr>
+<tr><td>Finalisation collateral</td><td>The refundable amount a buyer escrows alongside the price.</td></tr>
+<tr><td>Listing policy</td><td>Whether new and edited listings need approval.</td></tr>
+</table>
+
+<p>The owner's username is registered as part of the deployment itself, so the market has a
+named owner from its first block without a second transaction.</p>
+
+<p>The owner is also the market's treasury: fees accrue to the owner's per-market account.
+Ownership can be transferred to another account.</p>
+
+<p>Owners appoint <strong>moderators</strong> by username and grant them a bitmap of
+permissions: moderate listings, manage vendors, resolve disputes. Moderators are
+pseudonymous like everyone else, and the owner implicitly holds every permission.</p>
+
+<p>Presentation can be edited after deployment without redeploying. Changing the
+<em>rules</em> is a separate operation from changing the <em>storefront</em>, so a cosmetic
+edit cannot quietly alter the fee.</p>
+
+<p>Finally, the app checks the contract it is talking to. Before opening a market it
+verifies the contract's class against a list of known-good builds, so a link pointing at a
+modified contract that merely looks like a marketplace is refused rather than trusted.</p>
+
+<h2>14. What an observer actually sees</h2>
+
+<p>The table below is the privacy contract, action by action. An &ldquo;observer&rdquo; is
+anyone watching the chain without the market link.</p>
+
+<table>
+<tr><th>Event</th><th>Outside observer</th><th>Link holders</th><th>The parties</th></tr>
+<tr><td>Market deployed</td>
+<td class="pub">A marketplace contract appeared, plus its config values, plus a registry row under a meaningless key, all unlabelled</td>
+<td class="priv">Name, description, appearance, policies</td><td>None</td></tr>
+<tr><td>Listing created</td>
+<td class="pub">A listing exists; ciphertext size; an opaque price commitment and category tag</td>
+<td class="priv">Title, description, price, vendor handle</td><td>None</td></tr>
+<tr><td>Vendor registered</td>
+<td class="pub">A pseudonym joined the roster; the deposit amount, already public in the config</td>
+<td class="priv">same</td><td class="priv">The vendor knows their own seed</td></tr>
+<tr><td><strong>Order placed</strong></td>
+<td class="priv">Nothing attributable: commitments, nullifiers, and encrypted logs indistinguishable from any other Aztec activity</td>
+<td class="priv">Nothing: an order's escrow is its own address, and an observer cannot tell it exists</td>
+<td class="priv">Buyer and vendor: the full order, amount, and memo</td></tr>
+<tr><td>Order accepted</td>
+<td class="pub">One anonymous flag against an opaque id</td>
+<td class="pub">same</td><td class="priv">The buyer sees the order progress</td></tr>
+<tr><td>Shipping update</td>
+<td class="pub">One anonymous fulfilment flag</td>
+<td class="pub">same</td><td class="priv">The buyer sees shipped or delivered</td></tr>
+<tr><td><strong>Order settled</strong></td>
+<td class="priv">Nothing attributable</td>
+<td class="pub">A terminal state on an opaque order id; nothing about the money</td>
+<td class="priv">Vendor and owner receive private notes</td></tr>
+<tr><td>Dispute opened</td>
+<td class="pub">One anonymous flag, plus an opaque authentication commitment</td>
+<td class="pub">same</td><td class="priv">The three participants converse off-chain</td></tr>
+<tr><td>Dispute ruled</td>
+<td class="pub">An anonymous outcome code on an opaque order id</td>
+<td class="pub">same</td><td class="priv">The winning party collects from the order's escrow themselves</td></tr>
+</table>
+
+<p>Delivery addresses deserve a special word, because they are the most sensitive data in
+any real marketplace. They exist only inside a memo note encrypted to the vendor's inbox.
+They are never in public state, never in calldata, and never readable by the market
+operator.</p>
+
+<p>Now consider an observer who <em>does</em> hold the market link: a customer, or anyone
+the link was forwarded to. They can read the storefront, browse listings, verify prices,
+and see vendor pseudonyms and their reputations. They still cannot see who bought anything,
+what any individual order contained, or what balance anyone holds. The link buys read
+access to the catalogue, not to the trade.</p>
+
+<h2>15. Honest limitations</h2>
+
+<p>A privacy system that hides its caveats should not be trusted. These are ours.</p>
+
+<dl>
+<dt>The link is the whole secret</dt>
+<dd>Anyone who obtains a market link can read the catalogue. There is no revocation and no
+per-user access. Treat it as a shared password. The same is true of a seed: these are
+bearer instruments, and losing one is unrecoverable.</dd>
+
+<dt>Volume is visible</dt>
+<dd>Counters, note commitments, nullifiers, and the anonymous acceptance and dispute flags
+are public. An observer cannot tell what happened, but can tell roughly how much is
+happening, and when.</dd>
+
+<dt>Timing correlates</dt>
+<dd>An order placed at 14:02 and an acceptance at 14:03 on the same market are
+statistically related even though both are anonymous. Vendors who batch their responses
+blunt this; the protocol cannot remove it.</dd>
+
+<dt>The rules are public</dt>
+<dd>Fees, deposits, collateral, and timeouts are readable by anyone. This is a deliberate
+trade: the terms of the agreement should be checkable.</dd>
+
+<dt>Off-chain content depends on Arweave</dt>
+<dd>Listing content is encrypted, so Arweave learns nothing, but availability depends on
+it. An encrypted pointer is useless if the object cannot be fetched.</dd>
+
+<dt>Moderators are trusted, within limits</dt>
+<dd>A moderator can hide listings, suspend vendors, and rule on disputes. They cannot move
+money, cannot resolve an order twice, cannot touch an order the buyer already confirmed,
+and cannot deanonymise anyone. The limit on their power is structural rather than a promise
+of good behaviour, but within it, users are trusting the market's operator to rule
+fairly.</dd>
+
+<dt>The operator is powerful but bounded</dt>
+<dd>A market's owner can moderate listings, suspend vendors, rearrange the storefront, and
+change the rules for <em>future</em> orders. They cannot touch escrowed funds, which do
+not sit in their contract at all, cannot rewrite a placed order's terms, cannot read
+anyone's notes, and cannot swap the market's content without every link holder's client
+refusing to open it.</dd>
+
+<dt>Shipping physical goods reveals a physical address</dt>
+<dd>The delivery memo is encrypted to the vendor alone, but the vendor does learn where to
+send the parcel. Cryptography ends where the postal system begins.</dd>
+</dl>
+
+<h2>16. Glossary</h2>
+
+<dl>
+<dt>Access secret</dt>
+<dd>The random number carried in a market link. Derives the keys that decrypt the market's
+content, its category tags, and its price blindings. It derives no key to any money: the
+marketplace contract has no encryption keys at all, and each order's escrow uses a secret
+minted for that order alone.</dd>
+
+<dt>Authwit</dt>
+<dd>Authorisation witness: a one-time, scoped permission an account signs so that another
+party may perform a precise action on its behalf inside one transaction.</dd>
+
+<dt>Commitment</dt>
+<dd>A hash that binds a value without revealing it. Used here for a listing's whole price
+table, for usernames, and for dispute authentication.</dd>
+
+<dt>Price table</dt>
+<dd>A listing's variants and shipping methods, each priced. One on-chain commitment binds
+all of it, and an order records the buyer's choice as a position in the lists rather than
+as a price, so the contract can recompute the total for itself.</dd>
+
+<dt>Escrow keys</dt>
+<dd>Per order, not per market. Each order's escrow derives its keys from a secret minted
+for that order and known only to its two parties, so a leak exposes one order rather than
+every order on the market. Spending stays gated by the escrow's own rules. The marketplace
+contract itself has no encryption keys, so holding a market link lets you decrypt nothing
+about it.</dd>
+
+<dt>Fee juice</dt>
+<dd>What Aztec transactions are paid in.</dd>
+
+<dt>Note</dt>
+<dd>An encrypted record representing private state: a balance fragment, an order, a
+receipt. Only its owner can read it; the chain stores only a commitment.</dd>
+
+<dt>Nullifier</dt>
+<dd>A one-way tag published when a note is spent or a one-time action is taken. The network
+rejects duplicates, which prevents double-spending and double-settlement without revealing
+what was spent.</dd>
+
+<dt>Per-market account</dt>
+<dd>A pseudonymous account derived from a user's seed and a specific market's link. The
+identity that appears on-chain within that market.</dd>
+
+<dt>PXE</dt>
+<dd>Private eXecution Environment: the wallet-side engine that holds keys, decrypts notes,
+runs private functions, and builds proofs.</dd>
+
+<dt>Price commitment</dt>
+<dd>A public hash binding a listing's hidden price, so that buyers can prove in-circuit that
+their payment matches it.</dd>
+
+<dt>Sequencer</dt>
+<dd>The network operator that orders transactions and executes their public parts. It
+verifies proofs of the private parts but cannot see inside them.</dd>
+
+<dt>Universal wallet</dt>
+<dd>The account that holds funds and fee credit and pays for transactions, including those
+performed on behalf of a per-market account.</dd>
+
+<dt>Zero-knowledge proof</dt>
+<dd>A short certificate that a computation was performed correctly, verifiable by anyone
+without seeing the computation's inputs.</dd>
+</dl>
+
+<p class="footer-note">
+The Aztec Market System: contracts in Noir, applications in TypeScript, built on Aztec.
+Every mechanism described here exists in the repository and is covered by the project's
+contract-level and integration test suites.
+</p>
+
+</body>
+</html>

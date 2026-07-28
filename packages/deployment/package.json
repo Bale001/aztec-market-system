@@ -1,0 +1,28 @@
+{
+  "name": "@market/deployment",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./fpc-funding": "./dist/fpc-funding.js"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@alejoamiras/aztec-fee-payment": "5.0.1",
+    "@aztec-foundation/aztec-standards": "5.0.1",
+    "@aztec/aztec.js": "5.0.1",
+    "@aztec/foundation": "5.0.1",
+    "@market/contract-bindings": "0.1.0",
+    "@market/identity": "0.1.0",
+    "@market/market-metadata": "0.1.0",
+    "@market/shared-types": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.4"
+  }
+}

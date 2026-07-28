@@ -1,0 +1,26 @@
+{
+  "name": "aztec-market-system",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "services/*",
+    "tests"
+  ],
+  "scripts": {
+    "compile": "bash scripts/compile.sh",
+    "codegen": "bash scripts/codegen.sh",
+    "build": "yarn workspace @market/shared-types build && yarn workspace @market/market-metadata build && yarn workspace @market/identity build && yarn workspace @market/arweave-store build && yarn workspace @market/metadata-publisher build && yarn workspace @market/contract-bindings build && yarn workspace @market/deployment build",
+    "test:nr": "bash scripts/test-nr.sh",
+    "test:js": "yarn build && yarn workspace @market/identity test && yarn workspace @market/market-metadata test && yarn workspace @market/arweave-store test && yarn workspace @market/metadata-publisher test",
+    "test:integration": "yarn build && yarn workspace @market/integration-tests test",
+    "ci": "bash scripts/ci.sh"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.4"
+  },
+  "packageManager": "yarn@1.22.22"
+}

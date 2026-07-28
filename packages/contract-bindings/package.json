@@ -1,0 +1,21 @@
+{
+  "name": "@market/contract-bindings",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "description": "Generated TypeScript bindings for the market contracts (output of `yarn codegen`; src/artifacts is not checked in)",
+  "scripts": {
+    "build": "tsc && cp src/artifacts/*.json dist/artifacts/"
+  },
+  "dependencies": {
+    "@aztec/aztec.js": "5.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.4"
+  }
+}

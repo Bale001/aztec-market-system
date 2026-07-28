@@ -1,0 +1,22 @@
+[package]
+name = "marketplace_contract"
+type = "contract"
+authors = [""]
+compiler_version = ">=0.18.0"
+
+# All Aztec deps come from the aztec-packages checkout (not the aztec-nr
+# mirror): the token contract references aztec-nr by path inside that repo,
+# and mixing the two sources would produce duplicate crates whose types
+# (PartialUintNote, contexts, ...) do not unify.
+[dependencies]
+aztec = { git = "https://github.com/AztecProtocol/aztec-packages", tag = "v5.0.1", directory = "noir-projects/aztec-nr/aztec" }
+uint_note = { git = "https://github.com/AztecProtocol/aztec-packages", tag = "v5.0.1", directory = "noir-projects/aztec-nr/uint-note" }
+# cUSDC (the marketplace currency) is the aztec-standards Token, not the
+# noir-contracts one -- its on-chain class matches @aztec-foundation/aztec-standards
+# @5.0.1 (git commit c74541f). Pinned to that exact commit so our cross-contract
+# call selectors match the deployed cUSDC. It targets aztec-nr v5.0.1, same as us.
+token = { git = "https://github.com/AztecProtocol/aztec-standards", tag = "v5.0.1", directory = "src/token_contract" }
+market_protocol = { path = "../market-protocol" }
+# The escrow an order is funded into. place_order calls its initializer, which
+# is what makes the private kernel verify the escrow address against the terms.
+order_escrow = { path = "../order-escrow" }
