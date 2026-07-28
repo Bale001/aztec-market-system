@@ -125,9 +125,11 @@ in a later milestone.
 **What "on-chain" does NOT change:** everything is still ciphertext (AD-2).
 An observer sees that blobs exist and their sizes, nothing more.
 
-The metadata-publisher service stays in the repo as dev tooling and a
-candidate host for off-chain image blobs, but nothing in the protocol or
-apps depends on it.
+The metadata-publisher service was kept in the repo for a while as dev
+tooling and a candidate host for off-chain image blobs. It has since been
+deleted (2026-07-27): off-chain assets went to Arweave instead (see
+packages/arweave-store), and nothing in the protocol or the apps ever
+depended on the service.
 
 ## AD-4: Private vendor & payment architecture (2026-07-11)
 

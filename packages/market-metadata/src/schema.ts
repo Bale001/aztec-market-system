@@ -93,7 +93,7 @@ export interface MarketplaceMetadata {
   schemaVersion: typeof METADATA_SCHEMA_VERSION;
   name: string;
   shortDescription: string;
-  /** Content-hash reference into the metadata publisher store, or null. */
+  /** Content-hash reference to an off-chain asset (Arweave), or null. */
   logoRef: string | null;
   categories: string[];
   contact: string | null;
